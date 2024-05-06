@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import pdfplumber
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy import create_engine
-from sqlalchemy import MetaData, Table, Column, Integer, String
+from sqlalchemy import MetaData, Table, Column, String
 
 engine = create_engine('sqlite:///urbana_meetings.db')
 
@@ -22,7 +22,8 @@ metadata.create_all(engine)
 
 session = requests.Session()
 headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36'}
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 '
+                  'Safari/537.36'}
 stop_loop = False
 page = 0
 with engine.connect() as connection:
@@ -90,25 +91,25 @@ with engine.connect() as connection:
                 else:
                     video_db = None
                 insert_query = insert(meetings).values(
-                  date = date_db,
-                  title = title_db,
-                  link_agenda = link_agenda,
-                  text_agenda = text_agenda,
-                  link_agenda_packet = link_packets,
-                  text_agenda_packet = text_packets,
-                  link_minutes = link_minutes,
-                  text_minutes = text_minutes,
-                  link_video = video_db
+                    date=date_db,
+                    title=title_db,
+                    link_agenda=link_agenda,
+                    text_agenda=text_agenda,
+                    link_agenda_packet=link_packets,
+                    text_agenda_packet=text_packets,
+                    link_minutes=link_minutes,
+                    text_minutes=text_minutes,
+                    link_video=video_db
                 )
                 connection.execute(insert_query.on_conflict_do_update(
-                  index_elements = ['date', 'title'],
-                  set_=dict(link_agenda = link_agenda,
-                            text_agenda = text_agenda,
-                            link_agenda_packet = link_packets,
-                            text_agenda_packet = text_packets,
-                            link_minutes=link_minutes,
-                            text_minutes=text_minutes,
-                            link_video=video_db
-                            )
+                    index_elements=['date', 'title'],
+                    set_=dict(link_agenda=link_agenda,
+                              text_agenda=text_agenda,
+                              link_agenda_packet=link_packets,
+                              text_agenda_packet=text_packets,
+                              link_minutes=link_minutes,
+                              text_minutes=text_minutes,
+                              link_video=video_db
+                              )
                 ))
                 connection.commit()
