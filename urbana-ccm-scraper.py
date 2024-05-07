@@ -7,6 +7,7 @@ from sqlalchemy import MetaData, Table, Column, String
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy import and_
+from sqlalchemy import update
 
 engine = create_engine('sqlite:///urbana_council_meetings.sqlite')
 
@@ -40,7 +41,7 @@ with engine.connect() as connection:
             print("Finished.", page)
             stop_loop = True
         else:
-            print(page)
+            print(f"Page: {page}")
             for table_row in tbody.select('tr'):
                 date = table_row.select_one('span.date-display-single')
                 date_db = date.text.strip()
@@ -49,46 +50,22 @@ with engine.connect() as connection:
                 title_db = title.text.strip()
                 agendas = table_row.select_one('td.views-field-field-agendas a')
                 if agendas is not None:
-                    response = session.get(agendas['href'], headers=headers)
-                    with open('agenda.pdf', 'wb') as f:
-                        f.write(response.content)
-                    pdf = pdfplumber.open("agenda.pdf")
-                    text_agenda = ""
                     link_agenda = agendas['href']
-                    print(link_agenda)
-                    for pdf_page in pdf.pages:
-                        text_agenda = text_agenda + pdf_page.extract_text()
                 else:
-                    text_agenda = None
                     link_agenda = None
+                text_agenda = None
                 packets = table_row.select_one('td.views-field-field-packets a')
                 if packets is not None:
-                    response = session.get(packets['href'], headers=headers)
-                    with open('packets.pdf', 'wb') as f:
-                        f.write(response.content)
-                    pdf = pdfplumber.open("packets.pdf")
-                    text_packets = ""
                     link_packets = packets['href']
-                    print(link_packets)
-                    for pdf_page in pdf.pages:
-                        text_packets = text_packets + pdf_page.extract_text()
                 else:
-                    text_packets = None
                     link_packets = None
+                text_packets = None
                 minutes = table_row.select_one('td.views-field-field-minutes a')
                 if minutes is not None:
-                    response = session.get(minutes['href'], headers=headers)
-                    with open('minutes.pdf', 'wb') as f:
-                        f.write(response.content)
-                    pdf = pdfplumber.open("minutes.pdf")
-                    text_minutes = ""
                     link_minutes = minutes['href']
-                    print(link_minutes)
-                    for pdf_page in pdf.pages:
-                        text_minutes = text_minutes + pdf_page.extract_text()
                 else:
-                    text_minutes = None
                     link_minutes = None
+                text_minutes = None
                 videos = table_row.select_one('td.views-field-field-video-link a')
                 if videos is not None:
                     video_db = videos['href']
@@ -124,7 +101,7 @@ with engine.connect() as connection:
                   meetings.c.link_agenda).where(and_(meetings.c.link_agenda is not None,
                                                      meetings.c.text_agenda is None))
     for row in connection.execute(stmt):
-        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "agenda"})
+        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda, 'type': "agenda"})
     stmt = select(meetings.c.date,
                   meetings.c.title,
                   meetings.c.link_agenda_packet).where(and_(meetings.c.link_agenda_packet is not None,
@@ -136,7 +113,7 @@ with engine.connect() as connection:
                   meetings.c.link_minutes).where(and_(meetings.c.link_minutes is not None,
                                                       meetings.c.text_minutes is None))
     for row in connection.execute(stmt):
-        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "minutes"})
+        links.append({'date': row.date, 'title': row.title, 'link': row.link_minutes, 'type': "minutes"})
 
     num_links = 1
     for link in links:
@@ -148,5 +125,14 @@ with engine.connect() as connection:
             text = ""
             for pdf_page in pdf.pages:
                 text = text + pdf_page.extract_text()
-
-
+        if link['type'] == 'agenda':
+            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                               meetings.c.title == link['title'])).values(text_agenda=text)
+        if link['type'] == 'agenda_packet':
+            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                               meetings.c.title == link['title'])).values(text_agenda_packet=text)
+        if link['type'] == 'minutes':
+            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                               meetings.c.title == link['title'])).values(text_minutes=text)
+        connection.execute(stmt)
+        connection.commit()
