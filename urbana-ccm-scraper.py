@@ -41,7 +41,7 @@ with engine.connect() as connection:
             print("Finished.", page)
             stop_loop = True
         else:
-            print(f"Page: {page}")
+            print(f"Page: {page}", url)
             for table_row in tbody.select('tr'):
                 date = table_row.select_one('span.date-display-single')
                 date_db = date.text.strip()
@@ -84,55 +84,57 @@ with engine.connect() as connection:
                 )
                 connection.execute(insert_query.on_conflict_do_update(
                     index_elements=['date', 'title'],
-                    set_=dict(link_agenda=link_agenda,
-                              text_agenda=text_agenda,
-                              link_agenda_packet=link_packets,
-                              text_agenda_packet=text_packets,
-                              link_minutes=link_minutes,
-                              text_minutes=text_minutes,
-                              link_video=video_db
-                              )
+                    set_=dict(
+                        link_agenda=insert_query.excluded.link_agenda,
+                        link_agenda_packet=insert_query.excluded.link_agenda_packet,
+                        link_minutes=insert_query.excluded.link_minutes,
+                        link_video=insert_query.excluded.link_video
+                    )
                 ))
-                connection.commit()
+    connection.commit()
 
     links = []
     stmt = select(meetings.c.date,
                   meetings.c.title,
-                  meetings.c.link_agenda).where(and_(meetings.c.link_agenda is not None,
-                                                     meetings.c.text_agenda is None))
+                  meetings.c.link_agenda).where(and_(meetings.c.link_agenda != None,
+                                                     meetings.c.text_agenda == None))
     for row in connection.execute(stmt):
         links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda, 'type': "agenda"})
     stmt = select(meetings.c.date,
                   meetings.c.title,
-                  meetings.c.link_agenda_packet).where(and_(meetings.c.link_agenda_packet is not None,
-                                                            meetings.c.text_agenda_packet is None))
+                  meetings.c.link_agenda_packet).where(and_(meetings.c.link_agenda_packet != None,
+                                                            meetings.c.text_agenda_packet == None))
     for row in connection.execute(stmt):
         links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "agenda_packet"})
     stmt = select(meetings.c.date,
                   meetings.c.title,
-                  meetings.c.link_minutes).where(and_(meetings.c.link_minutes is not None,
-                                                      meetings.c.text_minutes is None))
+                  meetings.c.link_minutes).where(and_(meetings.c.link_minutes != None,
+                                                      meetings.c.text_minutes == None))
     for row in connection.execute(stmt):
         links.append({'date': row.date, 'title': row.title, 'link': row.link_minutes, 'type': "minutes"})
 
     num_links = 1
     for link in links:
         print(f"{num_links}/{len(links)} - {link['link']}")
+        num_links = num_links + 1
         response = session.get(link['link'], headers=headers)
         with open('file.pdf', 'wb') as f:
             f.write(response.content)
-        with pdfplumber.open("file.pdf") as pdf:
-            text = ""
-            for pdf_page in pdf.pages:
-                text = text + pdf_page.extract_text()
-        if link['type'] == 'agenda':
-            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
-                                               meetings.c.title == link['title'])).values(text_agenda=text)
-        if link['type'] == 'agenda_packet':
-            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
-                                               meetings.c.title == link['title'])).values(text_agenda_packet=text)
-        if link['type'] == 'minutes':
-            stmt = update(meetings).where(and_(meetings.c.date == link['date'],
-                                               meetings.c.title == link['title'])).values(text_minutes=text)
-        connection.execute(stmt)
-        connection.commit()
+        try:
+            with pdfplumber.open("file.pdf") as pdf:
+                text = ""
+                for pdf_page in pdf.pages:
+                    text = text + pdf_page.extract_text()
+            if link['type'] == 'agenda':
+                stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                                   meetings.c.title == link['title'])).values(text_agenda=text)
+            if link['type'] == 'agenda_packet':
+                stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                                   meetings.c.title == link['title'])).values(text_agenda_packet=text)
+            if link['type'] == 'minutes':
+                stmt = update(meetings).where(and_(meetings.c.date == link['date'],
+                                                   meetings.c.title == link['title'])).values(text_minutes=text)
+            connection.execute(stmt)
+            connection.commit()
+        except Exception as e:
+            print("Error reading PDF!")
