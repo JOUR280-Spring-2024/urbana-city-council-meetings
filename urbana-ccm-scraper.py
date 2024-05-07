@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy import and_
 from sqlalchemy import update
+import time
 
 engine = create_engine('sqlite:///urbana_council_meetings.sqlite')
 
@@ -33,12 +34,16 @@ stop_loop = False
 page = 0
 with engine.connect() as connection:
     while not stop_loop:
+        time.sleep(5)
         url = f"https://urbana-il.municodemeetings.com/?page={page}"
         response = session.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
         tbody = soup.select_one('tbody')
         if tbody is None:
-            print("Finished.", url)
+            if "We need to verify you are human before you can continue." in response.text:
+                print('Captcha!!!')
+            else:
+                print("Finished.", url)
             stop_loop = True
         else:
             print(f"Page: {page}", url)
