@@ -4,8 +4,11 @@ import pdfplumber
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData, Table, Column, String
+from datetime import datetime
+from sqlalchemy import select
+from sqlalchemy import and_
 
-engine = create_engine('sqlite:///urbana_meetings.db')
+engine = create_engine('sqlite:///urbana_council_meetings.sqlite')
 
 metadata = MetaData()
 meetings = Table('meetings', metadata,
@@ -41,6 +44,7 @@ with engine.connect() as connection:
             for table_row in tbody.select('tr'):
                 date = table_row.select_one('span.date-display-single')
                 date_db = date.text.strip()
+                date_db = datetime.strptime(date_db, "%m/%d/%Y - %I:%M%p").strftime("%Y-%m-%d %H:%M")
                 title = table_row.select_one('td.views-field-title')
                 title_db = title.text.strip()
                 agendas = table_row.select_one('td.views-field-field-agendas a')
@@ -113,3 +117,36 @@ with engine.connect() as connection:
                               )
                 ))
                 connection.commit()
+
+    links = []
+    stmt = select(meetings.c.date,
+                  meetings.c.title,
+                  meetings.c.link_agenda).where(and_(meetings.c.link_agenda is not None,
+                                                     meetings.c.text_agenda is None))
+    for row in connection.execute(stmt):
+        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "agenda"})
+    stmt = select(meetings.c.date,
+                  meetings.c.title,
+                  meetings.c.link_agenda_packet).where(and_(meetings.c.link_agenda_packet is not None,
+                                                            meetings.c.text_agenda_packet is None))
+    for row in connection.execute(stmt):
+        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "agenda_packet"})
+    stmt = select(meetings.c.date,
+                  meetings.c.title,
+                  meetings.c.link_minutes).where(and_(meetings.c.link_minutes is not None,
+                                                      meetings.c.text_minutes is None))
+    for row in connection.execute(stmt):
+        links.append({'date': row.date, 'title': row.title, 'link': row.link_agenda_packet, 'type': "minutes"})
+
+    num_links = 1
+    for link in links:
+        print(f"{num_links}/{len(links)} - {link['link']}")
+        response = session.get(link['link'], headers=headers)
+        with open('file.pdf', 'wb') as f:
+            f.write(response.content)
+        with pdfplumber.open("file.pdf") as pdf:
+            text = ""
+            for pdf_page in pdf.pages:
+                text = text + pdf_page.extract_text()
+
+
