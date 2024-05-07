@@ -34,7 +34,7 @@ stop_loop = False
 page = 0
 with engine.connect() as connection:
     while not stop_loop:
-        time.sleep(5)
+        time.sleep(5)  # otherwise, it prompts a captcha.
         url = f"https://urbana-il.municodemeetings.com/?page={page}"
         response = session.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
