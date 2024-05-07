@@ -1,4 +1,5 @@
 import requests
+from tqdm import tqdm
 from bs4 import BeautifulSoup
 import pdfplumber
 from sqlalchemy.dialects.sqlite import insert
@@ -33,12 +34,11 @@ page = 0
 with engine.connect() as connection:
     while not stop_loop:
         url = f"https://urbana-il.municodemeetings.com/?page={page}"
-        page = page + 1
         response = session.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
         tbody = soup.select_one('tbody')
         if tbody is None:
-            print("Finished.", page)
+            print("Finished.", url)
             stop_loop = True
         else:
             print(f"Page: {page}", url)
@@ -91,6 +91,7 @@ with engine.connect() as connection:
                         link_video=insert_query.excluded.link_video
                     )
                 ))
+        page = page + 1
     connection.commit()
 
     links = []
@@ -117,14 +118,22 @@ with engine.connect() as connection:
     for link in links:
         print(f"{num_links}/{len(links)} - {link['link']}")
         num_links = num_links + 1
-        response = session.get(link['link'], headers=headers)
-        with open('file.pdf', 'wb') as f:
-            f.write(response.content)
+        with session.get(link['link'], headers=headers, stream=True) as response:
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+            with tqdm(total=total_size, unit='B', unit_scale=True) as progress_bar:
+                with open('file.pdf', 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        progress_bar.update(len(chunk))
+                        f.write(chunk)
         try:
             with pdfplumber.open("file.pdf") as pdf:
                 text = ""
-                for pdf_page in pdf.pages:
-                    text = text + pdf_page.extract_text()
+                total_size = len(pdf.pages)
+                with tqdm(total=total_size) as progress_bar:
+                    for pdf_page in pdf.pages:
+                        text = text + pdf_page.extract_text()
+                        progress_bar.update(1)
             if link['type'] == 'agenda':
                 stmt = update(meetings).where(and_(meetings.c.date == link['date'],
                                                    meetings.c.title == link['title'])).values(text_agenda=text)
